@@ -37,7 +37,6 @@
 				padding: 7px;
 				border-radius: 3px;
 				margin: 5px;
-				width: 80px;
 				cursor: pointer;
 				display: flex;
 				justify-content: center;
@@ -56,11 +55,11 @@
 			<!-- Title, Etc -->
 			<h2>WebRTC / Node.js WebSocket Proxy Demostration</h2>
 			<p>This connects two WebRTC clients by using a Node.js WebSocket to proxy the two offers. See the console for debug information.</p>
+			<p>The initiator should append #1 to the end of the URL</p>
 
 			<!-- Control Buttons -->
 			<div class='buttons'>
-				<div class='standardBtn'>Send offer</div>
-				<div class='standardBtn'>Broadcast</div>
+				<div class='standardBtn'>Broadcast offer</div>
 			</div>
 		</div>
 		<span class='source'>https://github.com/feross/simple-peer</span>
@@ -69,75 +68,120 @@
 		<script>
 			// Events
 			document.getElementsByClassName('standardBtn')[0].onclick = "";
-			document.getElementsByClassName('standardBtn')[0].onclick = broadcast;
 
 			// Variables
-			let ws = new WebSocket("ws://"+ window.location.host +":8080");
+			let ws = new WebSocket("ws://"+ window.location.host +"/node");
+			let defaultOptions = {trickle: true, stream: false,  config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478?transport=udp' }] }}
+			let ka = setInterval(keepAlive, 1500);
+			let connections = [];
 
 			// Events
-			ws.onopen = function() { start(location.hash === "#1") };
+			ws.onopen = function() {
+				ws.send(JSON.stringify({function: "broadcast"}))
+			};
+			ws.onmessage = function(d) {
+				// Variables
+				let parsed = parseJSON(d.data);
 
-			// Broadcast offer
-			function broadcast() {
+				// Checks
+				if (!parsed || typeof(parsed) !== "object") { return false }
+				if (!parsed.event || typeof(parsed.event) !== "string") { return false }
+				if (parsed.event === "new") {
+					console.log("[Initiator] Making offer to", parsed.data.uuid)
+					generate(parsed.data.uuid).then(peer => {
+						ws.send(JSON.stringify({function: "initiate", uuid: parsed.data.uuid, offer: window.btoa(JSON.stringify(peer.offer))}))
+					});
+				} else if (parsed.event == "initiated") {
+					console.log("[Not Initiator] Received offer from", parsed.data.uuid)
+					generate(parsed.data.uuid, false).then(peer => {
+						peer.peer.signal(parseJSON(window.atob(parsed.data.offer)));
+						peer.peer.on('signal', d => {
+							ws.send(JSON.stringify({function: "respond", uuid: parsed.data.uuid, offer: window.btoa(JSON.stringify(d))}))
+						});
+					})
+				} else if (parsed.event == "responded") {
+					console.log("[Not Initiator] Responded to offer", parsed.data.uuid);
+					connections.find(function(p) {return p.uuid === parsed.data.uuid}).peer.signal(parseJSON(window.atob(parsed.data.offer)))
+				}
+			};
+
+			// Generate Peer
+			async function generate(uuid, initiator = true) {
+				return new Promise(function(resolve, reject) {
+					// Variables
+					let peerIndex = connections.push({
+						peer: new SimplePeer({
+							initiator: initiator,
+							...defaultOptions
+						}),
+						uuid: uuid
+					});
+					let peer = connections[peerIndex-1].peer;
+
+					// Events
+					peer.on('signal', d => {
+						if (initiator) { resolve({peer: peer, offer: d}) }
+					});
+					peer.on('close', function() {
+						console.log("Closed", uuid);
+						connections.splice(peerIndex, 1);
+						reconnect(uuid);
+					});
+					peer.on('error', function(e) {
+						console.log("Error", uuid, e);
+						connections.splice(peerIndex, 1);
+						reconnect(uuid);
+					});
+					peer.on('connect', () => {
+						console.log("Connected");
+					});
+					peer.on('data', d => {
+						console.log(`Message <${uuid}>:`, parseBytes(d));
+					});
+
+					if (!initiator) { resolve({peer: peer}) }
+				});
+			}
+
+			function keepAlive() {
+				sendAll("<keep-alive>");
+			}
+
+			// Reconnect Closed Connections
+			function reconnect(uuid) {
 				// Checks
 				if (ws.readyState !== ws.OPEN) { return false }
+				if (!uuid) { return false }
 
 				// Send
-				ws.send(JSON.stringify({function: "_force"}));
+				console.log("[Initiator] Making offer to", uuid)
+				generate(uuid).then(peer => {
+					ws.send(JSON.stringify({function: "initiate", uuid: uuid, offer: window.btoa(JSON.stringify(peer.offer))}))
+				});
 			}
 
-			// Start Connection
-			function start(initiator = location.hash === '#1') {
-				// Variables
-				let peer = new SimplePeer({
-					initiator: initiator,
-					trickle: false,
-					channelName: 'debugChannel',
-					stream: false,
-				});
-				let awaitingUUID = "";
+			// Broadcast
+			function sendAll(d) {
+				connections.forEach(function(c, i) {
+					if (!c || !c.peer || !c.uuid) { return false }
 
-				// Events
-				peer.on('signal', d => {
-					if (initiator) {
-						ws.send(JSON.stringify({function: "put", offer: window.btoa(JSON.stringify(d))}))
-					} else {
-						ws.send(JSON.stringify({function: "respond", offer: window.btoa(JSON.stringify(d)), uuid: awaitingUUID}))
+					// Send
+					try {
+						c.peer.send(d);
+					} catch(e) {
+						connections.splice(i-1, 1);
 					}
 				});
-				peer.on('error', function(e) {
-					console.log("Error:", e);
-				});
-				peer.on('connect', () => {
-					console.log('Connected:', peer);
-				});
-				peer.on('data', d => {
-					console.log('Message: ', parseBytes(d))
-				});
-				ws.onmessage = function(d) {
-					// Variables
-					let parsed = parseJSON(d.data);
-
-					// Checks
-					if (parsed.event == "offers" && !initiator) {
-						parsed.data.forEach(function(c, i) {
-							setTimeout(function() {
-								awaitingUUID = c.uuid;
-								peer.signal(parseJSON(window.atob(c.offer)));
-							}, 500 * i);
-						});
-					} else if (parsed.event == "response") {
-						peer.signal(parseJSON(window.atob(parsed.data.offer)));
-					}
-				}
 			}
 
+			// Parse JSON
 			function parseJSON(d) {
 				try {
 					return JSON.parse(d);
 				} catch(e) { return "" }
 			}
 
+			// Parse WebRTC Bytes
 			function parseBytes(d) {
 				try {
 					return new TextDecoder("utf-8").decode(d)

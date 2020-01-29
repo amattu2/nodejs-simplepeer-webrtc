@@ -4,7 +4,7 @@
 	Copy Alec M.
 	License GNU Affero General Public License v3.0
 */
-*
+
 'use strict';
 
 // Variables
@@ -35,84 +35,64 @@ server.on("connection", function(client, request) {
 
 		// Navigator
 		switch(parsed.function) {
-			case "put":
+			// let users know we are here
+			case "broadcast":
+				// Variables
+				var result = 0;
+
+				// Loops
+				clients.forEach(function(c) {
+					// Checks
+					if (!c.uuid || c.uuid === client.uuid) { return false }
+
+					// Broadcast New Client
+					c.send(JSON.stringify({event: "new", data: {uuid: client.uuid}}));
+					result++;
+				});
+
 				// Return
-				client.send(JSON.stringify({status: 1, data: putOffer(client, parsed.offer)}));
+				//client.send(JSON.stringify({status: 1, data: {users: result, uuid: client.uuid}}));
 				break;
-			case "get":
+			// users respond to "new" event
+			case "initiate":
+				// Variables
+				var result = 0;
+
+				// Loops
+				clients.forEach(function(c) {
+					// Checks
+					if (!c.uuid || c.uuid !== parsed.uuid) { return false }
+
+					// Respond
+					c.send(JSON.stringify({event: "initiated", data: {offer: parsed.offer, uuid: client.uuid}}));
+					result = 1;
+				});
+
 				// Return
-				client.send(JSON.stringify(getOffers(client)));
+				//client.send(JSON.stringify({status: 1, data: result}));
 				break;
 			case "respond":
+				// Variables
+				var result = 0;
+
+				// Loops
+				clients.forEach(function(c) {
+					// Checks
+					if (!c.uuid || c.uuid !== parsed.uuid) { return false }
+
+					// Respond
+					c.send(JSON.stringify({event: "responded", data: {offer: parsed.offer, uuid: client.uuid}}));
+					result = 1;
+				});
+
 				// Return
-				client.send(JSON.stringify({status: 1, data: respondOffer(client, parsed.offer, parsed.uuid)}));
+				client.send(JSON.stringify({status: 1, data: result}));
 				break;
-			case "_force":
-				client.send("forcing");
-				sendOffers(client);
 			default:
 				break;
 		}
 	});
 });
-
-function respondOffer(client, offer, uuid) {
-	// Loops
-	clients.forEach(function(c) {
-		// Checks
-		if (!c.uuid || c.uuid !== uuid) { return false }
-		if (!c.offer) { return false }
-
-		// Respond
-		c.send(JSON.stringify({event: "response", data: {offer: offer, uuid: client.uuid}}));
-	});
-
-	return 1;
-}
-
-// Set WebRTC Offer
-function putOffer(client, offer) {
-	// Variables
-	client.offer = offer;
-
-	// Return
-	sendOffers(client);
-	return getOffers(client);
-}
-
-// Get WebRTC Offers
-function getOffers(client = null) {
-	// Variables
-	let result = [];
-
-	// Loops
-	clients.forEach(function(c) {
-		// Checks
-		if (!c.uuid || (client && c.uuid === client.uuid)) { return false }
-		if (!c.offer) { return false }
-
-		// Variables
-		result.push({uuid: c.uuid, offer: c.offer});
-	});
-
-	// Return
-	return result;
-}
-
-// Dispatch WebRTC Offers
-function sendOffers(client) {
-	// Variables
-	let offers = getOffers();
-
-	// Loops
-	clients.forEach(function(c) {
-		// Checks
-		if (!c.uuid || c.uuid === client.uuid) { return false }
-
-		// Send
-		c.send(JSON.stringify({event: "offers", data: offers}));
-	});
-}
 
 // Parse Data
 function _parse(d) {
