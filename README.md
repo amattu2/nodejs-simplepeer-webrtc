@@ -5,10 +5,10 @@ In order to connect two WebRTC clients (using SimplePeer.js) I needed to use a W
 N/A
 
 # Notes
-N/A
+To preserve space, I used modified versions of the Node.js modules (UUID, WebSockets)
 
 # Requirements & Dependencies
 N/A
 
 # Previews
-![preview image](../screenshots/screenshot.png)
+![preview image](/../../screenshots/screenshot.png?raw=true)

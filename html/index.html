@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+	<!--
+		Produced 2020
+		By https://amattu.com/links/github
+		Copy Alec M.
+		License GNU Affero General Public License v3.0
+	-->
+	<head>
+		<meta charset="utf-8">
+		<title>SimplePeer WebRTC Example</title>
+		<style>
+			HTML {
+				height: 100%;
+			}
+
+			body {
+				padding: 0;
+				margin: 0;
+				background: #f2f2f2;
+				font-family: sans-serif;
+			}
+
+			.content {
+				padding: 25px;
+			}
+
+			.buttons {
+				display: flex;
+				justify-content: flex-start;
+				align-items: center;
+			}
+
+			.standardBtn {
+				background: #3b3b3b;
+				color: #fff;
+				padding: 7px;
+				border-radius: 3px;
+				margin: 5px;
+				width: 80px;
+				cursor: pointer;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+			}
+
+			.source {
+				position: absolute;
+				bottom: 5px;
+				left: 5px;
+			}
+		</style>
+	</head>
+	<body>
+		<div class='content'>
+			<!-- Title, Etc -->
+			<h2>WebRTC / Node.js WebSocket Proxy Demostration</h2>
+			<p>This connects two WebRTC clients by using a Node.js WebSocket to proxy the two offers. See the console for debug information.</p>
+
+			<!-- Control Buttons -->
+			<div class='buttons'>
+				<div class='standardBtn'>Send offer</div>
+				<div class='standardBtn'>Broadcast</div>
+			</div>
+		</div>
+		<span class='source'>https://github.com/feross/simple-peer</span>
+
+		<script src="simplepeer.min.js"></script>
+		<script>
+			// Events
+			document.getElementsByClassName('standardBtn')[0].onclick = "";
+			document.getElementsByClassName('standardBtn')[0].onclick = broadcast;
+
+			// Variables
+			let ws = new WebSocket("ws://"+ window.location.host +":8080");
+
+			// Events
+			ws.onopen = function() { start(location.hash === "#1") };
+
+			// Broadcast offer
+			function broadcast() {
+				// Checks
+				if (ws.readyState !== ws.OPEN) { return false }
+
+				// Send
+				ws.send(JSON.stringify({function: "_force"}));
+			}
+
+			// Start Connection
+			function start(initiator = location.hash === '#1') {
+				// Variables
+				let peer = new SimplePeer({
+					initiator: initiator,
+					trickle: false,
+					channelName: 'debugChannel',
+					stream: false,
+				});
+				let awaitingUUID = "";
+
+				// Events
+				peer.on('signal', d => {
+					if (initiator) {
+						ws.send(JSON.stringify({function: "put", offer: window.btoa(JSON.stringify(d))}))
+					} else {
+						ws.send(JSON.stringify({function: "respond", offer: window.btoa(JSON.stringify(d)), uuid: awaitingUUID}))
+					}
+				});
+				peer.on('error', function(e) {
+					console.log("Error:", e);
+				});
+				peer.on('connect', () => {
+					console.log('Connected:', peer);
+				});
+				peer.on('data', d => {
+					console.log('Message: ', parseBytes(d))
+				});
+				ws.onmessage = function(d) {
+					// Variables
+					let parsed = parseJSON(d.data);
+
+					// Checks
+					if (parsed.event == "offers" && !initiator) {
+						parsed.data.forEach(function(c, i) {
+							setTimeout(function() {
+								awaitingUUID = c.uuid;
+								peer.signal(parseJSON(window.atob(c.offer)));
+							}, 500 * i);
+						});
+					} else if (parsed.event == "response") {
+						peer.signal(parseJSON(window.atob(parsed.data.offer)));
+					}
+				}
+			}
+
+			function parseJSON(d) {
+				try {
+					return JSON.parse(d);
+				} catch(e) { return "" }
+			}
+
+			function parseBytes(d) {
+				try {
+					return new TextDecoder("utf-8").decode(d)
+				} catch(e) { return "" }
+			}
+		</script>
+	</body>
+</html>
