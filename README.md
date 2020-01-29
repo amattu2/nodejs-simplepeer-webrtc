@@ -1,5 +1,5 @@
 # Introduction
-N/A
+In order to connect two WebRTC clients (using SimplePeer.js) I needed to use a WebSocket server to proxy the two WebRTC offers. Because WebRTC is way more complicated then it needs to be, I decided to build this test application.
 
 # Usage
 N/A
@@ -11,4 +11,4 @@ N/A
 N/A
 
 # Previews
-![preview image](https://via.placeholder.com/350x240)
+![preview image](../screenshots/screenshot.png)
