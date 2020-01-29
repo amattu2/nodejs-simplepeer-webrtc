@@ -11,4 +11,4 @@ To preserve space, I used modified versions of the Node.js modules (UUID, WebSoc
 N/A
 
 # Previews
-![preview image](/../../screenshots/screenshot.png?raw=true)
+![preview image](/../../blob/master/screenshots/screenshot.png)
